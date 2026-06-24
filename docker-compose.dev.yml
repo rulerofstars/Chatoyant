@@ -1,0 +1,11 @@
+services:
+  bot:
+    build:
+      context: .
+      target: dev
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src

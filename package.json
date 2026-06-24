@@ -1,0 +1,22 @@
+{
+  "name": "chatoyant",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "docker compose -f docker-compose.dev.yml up --build",
+    "start": "docker compose up --build",
+    "deploy:dev": "docker compose -f docker-compose.dev.yml run --rm bot bun src/lib/deploy.ts",
+    "deploy:prod": "docker compose run --rm bot bun src/lib/deploy.ts",
+    "lint": "biome lint ./src",
+    "format": "biome format --write ./src",
+    "check": "biome check --write ./src"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/bun": "^1.1.14",
+    "typescript": "^5.7.2"
+  }
+}
