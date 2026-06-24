@@ -5,6 +5,13 @@ import {
   type MessageContextMenuCommandInteraction,
 } from "discord.js";
 
+/**
+ * Extracts all unique emoji identifiers from a Discord message string.
+ *
+ * Returns strings in the format expected by `Message.react()`:
+ * - Custom emoji: `"name:id"` (e.g. `"pepega:123456789"`)
+ * - Unicode emoji: the raw characters (e.g. `"⚔️"`, `"🇦"`, `"1️⃣"`)
+ */
 function extractEmojis(content: string): string[] {
   const seen = new Set<string>();
   const results: string[] = [];
@@ -32,6 +39,15 @@ function extractEmojis(content: string): string[] {
   return results;
 }
 
+/**
+ * Message context menu command: right-click a message -> Apps -> Seed Reactions.
+ *
+ * Scans the target message for emoji and reacts with each one the bot hasn't already
+ * reacted with.
+ *
+ * Requires ADD_REACTIONS.
+ * Emoji the bot can't react with (missing permission, unavailable) are silently skipped.
+ */
 export default {
   data: new ContextMenuCommandBuilder()
     .setName("Seed Reactions")
@@ -74,7 +90,7 @@ export default {
         await message.react(emoji);
         seeded++;
       } catch {
-        // emoji unavailable or missing permission — skip
+        // skip emoji unavailable or missing permission
       }
     }
 

@@ -6,6 +6,17 @@ import {
   type MessageContextMenuCommandInteraction,
 } from "discord.js";
 
+const ROW_BREAK = { name: "​", value: "​", inline: false } as const;
+
+/**
+ * Message context menu command: right-click a message -> Apps -> View Reactions.
+ *
+ * Fetches all emoji reactions on the target message,
+ * then builds an ephemeral embed showing each emoji with the list of reactors. 
+ * 
+ * Requires the bot to have READ_MESSAGE_HISTORY and VIEW_CHANNEL in the target channel
+ * (needed for reaction.users.fetch()).
+ */
 export default {
   data: new ContextMenuCommandBuilder()
     .setName("View Reactions")
@@ -49,21 +60,22 @@ export default {
       .setDescription(`Unique Users: **${allUserIds.size}**`)
       .setColor(0x5865f2);
 
+    let col = 0;
     for (const { emoji, userIds } of reactionData) {
       if (userIds.length === 0) continue;
 
       const lines = userIds.flatMap((id) => {
         const member = members?.get(id);
         const username = member?.user.username ?? id;
-        const line = [`• <@${id}>`];
-        line.push(`*(${username})*`);
-        return line;
+        return [`• <@${id}>`, `*(${username})*`];
       });
 
       let value = lines.join("\n");
       if (value.length > 1024) value = value.slice(0, 1021) + "…";
 
       embed.addFields({ name: emoji, value, inline: true });
+      col++;
+      if (col % 2 === 0) embed.addFields(ROW_BREAK);
     }
 
     await interaction.editReply({ embeds: [embed] });
