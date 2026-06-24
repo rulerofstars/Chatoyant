@@ -17,7 +17,11 @@ function extractEmojis(content: string): string[] {
     }
   }
 
-  for (const match of content.matchAll(/\p{Extended_Pictographic}️?/gu)) {
+  // flag pairs | single regional indicators (🇦) | standard emoji (⚔️) | keycaps (1️⃣)
+  const unicodeEmojiRegex =
+    /\p{Regional_Indicator}\p{Regional_Indicator}|\p{Regional_Indicator}|\p{Extended_Pictographic}️?|[0-9#*]️?⃣/gu;
+
+  for (const match of content.matchAll(unicodeEmojiRegex)) {
     const emoji = match[0];
     if (!seen.has(emoji)) {
       seen.add(emoji);
