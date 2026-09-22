@@ -10,43 +10,60 @@ import {
 } from "discord.js";
 
 /**
- * Translates raw message content into an ordered sequence of emoji identifiers and user IDs.
+ * Translates raw message content into an ordered sequence of emoji identifiers, user IDs,
+ * and plain text words.
  * Custom emoji are returned as `<:name:id>` / `<a:name:id>`.
  * Unicode emoji are returned as the raw character(s).
  * Mentions are returned as the bare user ID.
  */
 function tokenize(content: string) {
-  type Token = { type: "emoji"; value: string } | { type: "mention"; userId: string };
+  type Token =
+    | { type: "emoji"; value: string }
+    | { type: "mention"; userId: string }
+    | { type: "text"; value: string };
   const tokens: Token[] = [];
 
-  // Order: custom emoji | mention | flag pairs | single regional indicators | standard emoji | keycaps
+  // Order: custom emoji | mention | flag pairs | single regional indicators | standard emoji | keycaps | word
   const re =
-    /(<a?:\w+:\d+>)|(<@!?(\d+)>)|(\p{Regional_Indicator}\p{Regional_Indicator}|\p{Regional_Indicator}|\p{Extended_Pictographic}️?|[0-9#*]️?⃣)/gu;
+    /(<a?:\w+:\d+>)|(<@!?(\d+)>)|(\p{Regional_Indicator}\p{Regional_Indicator}|\p{Regional_Indicator}|\p{Extended_Pictographic}️?|[0-9#*]️?⃣)|(\S+)/gu;
 
   for (const m of content.matchAll(re)) {
     if (m[1]) tokens.push({ type: "emoji", value: m[1] });
     else if (m[3]) tokens.push({ type: "mention", userId: m[3] });
     else if (m[4]) tokens.push({ type: "emoji", value: m[4] });
+    else if (m[5]) tokens.push({ type: "text", value: m[5] });
   }
 
   return tokens;
 }
 
+/** True for separators ("/", "|", "-" etc) */
+function isSeparator(value: string) {
+  return /^[-/|,;:]+$/.test(value);
+}
+
 /**
- * Groups user IDs under their preceding emoji, preserving insertion order.
+ * Groups a label and user IDs under their preceding emoji, preserving insertion order.
  * Mentions that appear before any emoji are ignored.
  */
-function groupByEmoji(tokens: ReturnType<typeof tokenize>): Map<string, string[]> {
-  const groups = new Map<string, string[]>();
+function groupByEmoji(tokens: ReturnType<typeof tokenize>): Map<string, { label: string; ids: string[] }> {
+  const groups = new Map<string, { label: string; ids: string[] }>();
   let current: string | null = null;
+  let labelLocked = false;
 
   for (const token of tokens) {
     if (token.type === "emoji") {
       current = token.value;
-      if (!groups.has(current)) groups.set(current, []);
-    } else if (current) {
+      labelLocked = false;
+      if (!groups.has(current)) groups.set(current, { label: "", ids: [] });
+    } else if (token.type === "mention") {
+      if (!current) continue;
+      labelLocked = true;
       const group = groups.get(current)!;
-      if (!group.includes(token.userId)) group.push(token.userId);
+      if (!group.ids.includes(token.userId)) group.ids.push(token.userId);
+    } else if (current && !labelLocked && !isSeparator(token.value)) {
+      const group = groups.get(current)!;
+      group.label = group.label ? `${group.label} ${token.value}` : token.value;
     }
   }
 
@@ -56,11 +73,11 @@ function groupByEmoji(tokens: ReturnType<typeof tokenize>): Map<string, string[]
 /**
  * Message context menu command: right-click a message -> Apps -> Ping Selected.
  *
- * Parses emoji→mention associations from the target message (regardless of how they're
- * formatted), shows a modal for an optional custom message, then posts a clean ping:
+ * Parses emoji->label->mention associations from the target message (regardless of how
+ * they're formatted), shows a modal for an optional custom message, then posts a clean ping:
  *
- *   emoji: @mention1 @mention2
- *   emoji2: @mention3
+ *   emoji `label`: @mention1 @mention2
+ *   emoji2 `label2`: @mention3
  *   [custom message]
  *
  * Posts into the message's thread if one exists, otherwise into the same channel.
@@ -80,7 +97,7 @@ export default {
     }
 
     const groups = groupByEmoji(tokenize(message.content));
-    const populated = [...groups.entries()].filter(([, ids]) => ids.length > 0);
+    const populated = [...groups.entries()].filter(([, group]) => group.ids.length > 0);
 
     if (populated.length === 0) {
       await interaction.reply({ content: "No emoji : mention pairs found in that message.", flags: MessageFlags.Ephemeral });
@@ -116,7 +133,10 @@ export default {
     }
 
     const custom = submitted.fields.getTextInputValue("custom-message").trim();
-    const lines = populated.map(([emoji, ids]) => `${emoji}: ${ids.map((id) => `<@${id}>`).join(" ")}`);
+    const lines = populated.map(([emoji, { label, ids }]) => {
+      const mentions = ids.map((id) => `<@${id}>`).join(" ");
+      return label ? `${emoji} \`${label}\`: ${mentions}` : `${emoji}: ${mentions}`;
+    });
     const content = lines.join("\n") + (custom ? `\n${custom}` : "");
 
     const destination = message.hasThread && message.thread
