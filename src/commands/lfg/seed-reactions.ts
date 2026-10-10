@@ -1,9 +1,10 @@
 import {
   ApplicationCommandType,
   ContextMenuCommandBuilder,
-  MessageFlags,
   type MessageContextMenuCommandInteraction,
+  MessageFlags,
 } from "discord.js";
+import { UNICODE_EMOJI_SOURCE } from "./emoji.ts";
 
 /**
  * Extracts all unique emoji identifiers from a Discord message string.
@@ -24,9 +25,7 @@ function extractEmojis(content: string): string[] {
     }
   }
 
-  // flag pairs | single regional indicators (🇦) | standard emoji (⚔️) | keycaps (1️⃣)
-  const unicodeEmojiRegex =
-    /\p{Regional_Indicator}\p{Regional_Indicator}|\p{Regional_Indicator}|\p{Extended_Pictographic}️?|[0-9#*]️?⃣/gu;
+  const unicodeEmojiRegex = new RegExp(UNICODE_EMOJI_SOURCE, "gu");
 
   for (const match of content.matchAll(unicodeEmojiRegex)) {
     const emoji = match[0];

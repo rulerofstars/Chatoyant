@@ -5,9 +5,11 @@ import {
   MessageFlags,
   ModalBuilder,
   TextInputStyle,
-  type GuildTextBasedChannel,
   type MessageContextMenuCommandInteraction,
 } from "discord.js";
+import { UNICODE_EMOJI_SOURCE } from "./emoji.ts";
+import { formatPingLine, resolveDestination } from "./ping.ts";
+import { requireOriginalPoster } from "./permissions.ts";
 
 /**
  * Translates raw message content into an ordered sequence of emoji identifiers, user IDs,
@@ -23,9 +25,8 @@ function tokenize(content: string) {
     | { type: "text"; value: string };
   const tokens: Token[] = [];
 
-  // Order: custom emoji | mention | flag pairs | single regional indicators | standard emoji | keycaps | word
-  const re =
-    /(<a?:\w+:\d+>)|(<@!?(\d+)>)|(\p{Regional_Indicator}\p{Regional_Indicator}|\p{Regional_Indicator}|\p{Extended_Pictographic}️?|[0-9#*]️?⃣)|(\S+)/gu;
+  // Order: custom emoji | mention | unicode emoji | word
+  const re = new RegExp(String.raw`(<a?:\w+:\d+>)|(<@!?(\d+)>)|(${UNICODE_EMOJI_SOURCE})|(\S+)`, "gu");
 
   for (const m of content.matchAll(re)) {
     if (m[1]) tokens.push({ type: "emoji", value: m[1] });
@@ -91,10 +92,7 @@ export default {
   async execute(interaction: MessageContextMenuCommandInteraction) {
     const message = interaction.targetMessage;
 
-    if (interaction.user.id !== message.author.id) {
-      await interaction.reply({ content: "Only the original poster can use this.", flags: MessageFlags.Ephemeral });
-      return;
-    }
+    if (!(await requireOriginalPoster(interaction, message))) return;
 
     const groups = groupByEmoji(tokenize(message.content));
     const populated = [...groups.entries()].filter(([, group]) => group.ids.length > 0);
@@ -133,17 +131,10 @@ export default {
     }
 
     const custom = submitted.fields.getTextInputValue("custom-message").trim();
-    const lines = populated.map(([emoji, { label, ids }]) => {
-      const mentions = ids.map((id) => `<@${id}>`).join(" ");
-      return label ? `${emoji} \`${label}\`: ${mentions}` : `${emoji}: ${mentions}`;
-    });
+    const lines = populated.map(([emoji, { label, ids }]) => formatPingLine(emoji, label, ids));
     const content = lines.join("\n") + (custom ? `\n${custom}` : "");
 
-    const destination = message.hasThread && message.thread
-      ? message.thread
-      : message.channel as GuildTextBasedChannel;
-
-    await destination.send(content);
+    await resolveDestination(message).send(content);
     await submitted.reply({ content: "Pinged.", flags: MessageFlags.Ephemeral });
   },
 };

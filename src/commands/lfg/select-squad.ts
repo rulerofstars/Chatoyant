@@ -9,14 +9,11 @@ import {
   MessageFlags,
   StringSelectMenuBuilder,
   type GuildMember,
-  type GuildTextBasedChannel,
   type MessageContextMenuCommandInteraction,
 } from "discord.js";
-
-/** Identifier for a reaction's emoji, matching the `<a?:name:id>` / raw-unicode format used elsewhere. */
-function emojiIdentifier(emoji: { id: string | null; name: string | null; animated?: boolean | null }): string {
-  return emoji.id ? `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>` : (emoji.name ?? "");
-}
+import { emojiIdentifier, UNICODE_EMOJI_SOURCE } from "./emoji.ts";
+import { formatPingLine, resolveDestination } from "./ping.ts";
+import { requireOriginalPoster } from "./permissions.ts";
 
 /**
  * Extracts the label text following each emoji in the
@@ -25,8 +22,7 @@ function emojiIdentifier(emoji: { id: string | null; name: string | null; animat
  */
 function extractEmojiLabels(content: string): Map<string, string> {
   const labels = new Map<string, string>();
-  const emojiRe =
-    /(<a?:\w+:\d+>)|(\p{Regional_Indicator}\p{Regional_Indicator}|\p{Regional_Indicator}|\p{Extended_Pictographic}️?|[0-9#*]️?⃣)/gu;
+  const emojiRe = new RegExp(String.raw`(<a?:\w+:\d+>)|(${UNICODE_EMOJI_SOURCE})`, "gu");
 
   const mentionRe = /<@!?\d+>/;
 
@@ -77,10 +73,7 @@ export default {
   async execute(interaction: MessageContextMenuCommandInteraction) {
     const message = interaction.targetMessage;
 
-    if (interaction.user.id !== message.author.id) {
-      await interaction.reply({ content: "Only the original poster can use this.", flags: MessageFlags.Ephemeral });
-      return;
-    }
+    if (!(await requireOriginalPoster(interaction, message))) return;
 
     const labels = extractEmojiLabels(message.content);
 
@@ -158,7 +151,7 @@ export default {
       const truncated = current.reactors.slice(0, MAX_OPTIONS);
       const select = new StringSelectMenuBuilder()
         .setCustomId("role-select")
-        .setPlaceholder(`Select who's going: ${current.label || current.emoji}`)
+        .setPlaceholder(`Select: ${current.emoji} ${current.label || ""}`)
         .setMinValues(0)
         .setMaxValues(truncated.length)
         .addOptions(
@@ -218,21 +211,14 @@ export default {
 
         const lines = pages
           .filter((p) => selections.get(p.emoji)!.size > 0)
-          .map((p) => {
-            const mentions = [...selections.get(p.emoji)!].map((id) => `<@${id}>`).join(" ");
-            return p.label ? `${p.emoji} \`${p.label}\`: ${mentions}` : `${p.emoji}: ${mentions}`;
-          });
+          .map((p) => formatPingLine(p.emoji, p.label, selections.get(p.emoji)!));
 
         if (lines.length === 0) {
           await i.update({ content: "Nobody was selected.", embeds: [], components: [] });
           return;
         }
 
-        const destination = message.hasThread && message.thread
-          ? message.thread
-          : (message.channel as GuildTextBasedChannel);
-
-        await destination.send(lines.join("\n"));
+        await resolveDestination(message).send(lines.join("\n"));
         await i.update({ content: "Pinged.", embeds: [], components: [] });
       }
     });

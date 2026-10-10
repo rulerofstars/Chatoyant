@@ -5,6 +5,7 @@ import {
   MessageFlags,
   type MessageContextMenuCommandInteraction,
 } from "discord.js";
+import { emojiIdentifier } from "./emoji.ts";
 
 const ROW_BREAK = { name: "​", value: "​", inline: false } as const;
 
@@ -43,9 +44,7 @@ export default {
 
       for (const u of users) allUserIds.add(u.id);
 
-      const emoji = reaction.emoji.id
-        ? `<${reaction.emoji.animated ? "a" : ""}:${reaction.emoji.name}:${reaction.emoji.id}>`
-        : (reaction.emoji.name ?? "?");
+      const emoji = emojiIdentifier(reaction.emoji) || "?";
 
       reactionData.push({ emoji, userIds: users.map((u) => u.id) });
     }
